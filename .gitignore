@@ -1,0 +1,12 @@
+# Secrets and API keys
+.env
+secureme-key.json
+
+# Python junk
+__pycache__/
+*.pyc
+
+# OS/editor stuff
+.DS_Store
+.idea/
+.vscode/
