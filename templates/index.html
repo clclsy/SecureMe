@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>SecureMe: Profile Checker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600&family=Playfair+Display:wght@600&display=swap"
+    rel="stylesheet" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='mascot.png') }}" />
+</head>
+
+<body>
+  <!-- Form Section -->
+  <div id="formSection" class="card" {% if summary or error %}style="display: none;" {% endif %}>
+    <img src="{{ url_for('static', filename='mascot.png') }}" alt="SecureMe logo" class="logo" />
+    <h1>SecureMe</h1>
+    <p class="subtitle">Check Safety Profile of New Matches 💕</p>
+
+    <form method="POST" enctype="multipart/form-data" id="scanForm">
+      <input type="text" name="name" placeholder="Enter a full name" />
+
+      <p class="or-text">or</p>
+
+      <div class="upload-drop-box" id="uploadBox">
+        <label for="imageInput" class="upload-btn">Upload Image</label>
+        <input type="file" name="image" id="imageInput" accept="image/*" hidden />
+        <p class="hint-text">or just paste a screenshot ✨</p>
+        <img id="preview" src="" style="max-width: 100%; display: none" />
+        <p id="uploadStatus" class="hint-text" style="display: none">
+          ✅ Image uploaded successfully!
+        </p>
+      </div>
+
+      <button type="submit">Scan</button>
+      <div id="loading" class="loading">🔍 Scanning... please wait</div>
+    </form>
+  </div>
+
+  <!-- Results Section (Hidden Initially) -->
+  <div id="resultsSection" class="card results-container" {% if not summary and not error %}style="display: none;" {%
+    endif %}>
+    <!-- Mascot (bottom left) -->
+    <div class="mascot-column">
+      <img src="{{ url_for('static', filename='mascot.png') }}" class="logo mascot-flex" />
+    </div>
+
+    <!-- Bubble contains ALL results -->
+    <div class="speech-bubble full-results">
+      <strong>
+        {% if 'safe' in tags %} 😊 Looks good — nothing alarming found! {%
+        elif tags %} 🚨 Be cautious — we found some concerning tags. {% else
+        %} 🤔 No tags returned — unclear result. {% endif %}
+      </strong>
+      <br /><br />
+
+      {% if summary %}
+      <div>
+        <p>{{ summary }}</p>
+
+        <h3>Tags:</h3>
+        <div class="tag-container">
+          {% for tag in tags %}
+          <span class="tag">{{ tag }}</span>
+          {% endfor %}
+        </div>
+
+        <h3>Sources:</h3>
+        {% if links %}
+        <ul class="source-links">
+          {% for link in links %}
+          <li>
+            <a href="{{ link.link }}" target="_blank">{{ link.title or link.link }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>No sources available.</p>
+        {% endif %}
+      </div>
+      {% endif %} {% if matched_faces %}
+      <h3>Face Match Results:</h3>
+      <div class="tag-container">
+        {% for m in matched_faces %}
+        <div class="tag" style="display: inline-block; margin-bottom: 0.5rem;">
+          <strong>{{ m.match }}</strong>
+          {% if m.confidence %}
+          — Confidence: {{ m.confidence }}
+          {% endif %}
+          {% if m.match_type == "name_only" %}
+          <br><span style="font-size: 0.8rem; color: #cc4444;">⚠️ Name match only — verify visually</span>
+          {% endif %}
+          {% if m.image %}
+          <br><img src="{{ m.image }}" style="max-height: 120px; margin-top: 0.5rem; border-radius: 8px;" />
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const imageInput = document.getElementById("imageInput");
+      const preview = document.getElementById("preview");
+      const uploadBox = document.getElementById("uploadBox");
+      const loading = document.getElementById("loading");
+      const uploadStatus = document.getElementById("uploadStatus");
+      const form = document.getElementById("scanForm");
+      let compressing = false;
+      imageInput.addEventListener("change", function () {
+        const file = this.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            preview.src = event.target.result;
+            preview.style.display = "block";
+            uploadStatus.style.display = "block";
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      window.addEventListener("paste", (event) => {
+        const items = event.clipboardData.items;
+        for (const item of items) {
+          if (item.type.indexOf("image") === 0) {
+            handleImage(item.getAsFile());
+          }
+        }
+      });
+
+      uploadBox.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadBox.style.borderColor = "#aad7ff";
+      });
+
+      uploadBox.addEventListener("dragleave", () => {
+        uploadBox.style.borderColor = "#f9cadc";
+      });
+
+      uploadBox.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        handleImage(file);
+      });
+
+      function handleImage(blob) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const img = new Image();
+          img.onload = function () {
+            compressing = true;
+            const canvas = document.createElement("canvas");
+            const MAX_WIDTH = 600;
+            let scale = MAX_WIDTH / img.width;
+            canvas.width = MAX_WIDTH;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(
+              function (compressedBlob) {
+                const previewURL = URL.createObjectURL(compressedBlob);
+                preview.src = previewURL;
+                preview.style.display = "block";
+                uploadStatus.style.display = "block";
+                const file = new File([compressedBlob], "pasted.jpg", {
+                  type: "image/jpeg",
+                });
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                imageInput.files = dataTransfer.files;
+                compressing = false;
+              },
+              "image/jpeg",
+              0.15
+            );
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(blob);
+      }
+
+      form.addEventListener("submit", function (event) {
+        if (compressing) {
+          alert("⏳ Please wait — image is still processing.");
+          event.preventDefault();
+          return;
+        }
+
+        if (!imageInput.files.length && !form.name.value.trim()) {
+          alert("❗ Please paste/upload an image or enter a name.");
+          event.preventDefault();
+          return;
+        }
+
+        loading.style.display = "block";
+      });
+    });
+  </script>
+  <footer style="
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 50px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 0.85rem;
+        font-style: italic;
+        color: #aa99aa;
+        background: linear-gradient(to right, #fbe9f0, #e5eaf6);
+        border-top: 1px solid #f3dbe6;
+        opacity: 0.92;
+        z-index: 999;
+        box-shadow: 0 -1px 5px rgba(0, 0, 0, 0.05);
+      ">
+    🛡 This tool uses publicly available data and does not make legal
+    accusations. Use responsibly.
+  </footer>
+</body>
+
+</html>
